@@ -1,0 +1,5 @@
+Insert and edit DataMatrix 2D barcodes in LibreOffice Writer, Calc, and Draw.
+Select an existing DataMatrix graphic and run the command again to update its encoded text.
+
+Author: Slovjinika
+License: MIT

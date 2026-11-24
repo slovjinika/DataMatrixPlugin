@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<description xmlns="http://openoffice.org/extensions/description/2006"
+             xmlns:xlink="http://www.w3.org/1999/xlink">
+  <identifier value="com.slovjinika.libreoffice.datamatrix"/>
+  <version value="0.1.0"/>
+  <display-name>
+    <name lang="en">DataMatrix Insert &amp; Edit</name>
+  </display-name>
+
+  <publisher>
+    <name xlink:href="https://github.com/slovjinika/DataMatrixPlugin" lang="en">Slovjinika</name>
+  </publisher>
+
+  <extension-description>
+    <src xlink:href="LICENSE" lang="en"/>
+  </extension-description>
+
+  <libreoffice-minimal-version value="7.0" dep:name="LibreOffice 7.0+" xmlns:dep="http://openoffice.org/extensions/description/2006"/>
+</description>
