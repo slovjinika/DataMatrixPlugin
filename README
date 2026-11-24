@@ -1,3 +1,6 @@
+
+![DataMatrix Generator for LibreOffice](image.png)
+
 # DataMatrix Generator for LibreOffice
 
 A lightweight, self-contained LibreOffice extension (`com.slovjinika.libreoffice.datamatrix`) that generates and inserts borderless, transparent-background **DataMatrix (ECC200)** barcodes directly into **Writer**, **Calc**, and **Draw**.
