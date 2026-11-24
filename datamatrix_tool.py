@@ -528,12 +528,23 @@ class DataMatrixDispatch(unohelper.Base, XDispatch):
         self.ctx = ctx
         self.frame = frame
 
+    def _resolve_doc(self):
+        if self.frame is not None:
+            controller = self.frame.getController()
+            if controller is not None:
+                return controller.getModel()
+        desktop = self.ctx.getByName("/singletons/com.sun.star.frame.theDesktop")
+        doc = desktop.getCurrentComponent()
+        if doc is not None:
+            return doc
+        frame = desktop.getCurrentFrame() or desktop.getActiveFrame()
+        if frame is not None and frame.getController() is not None:
+            return frame.getController().getModel()
+        return None
+
     def dispatch(self, url, args):
         try:
-            controller = self.frame.getController() if self.frame is not None else None
-            if controller is None:
-                return
-            doc = controller.getModel()
+            doc = self._resolve_doc()
             if doc is None:
                 return
 
@@ -588,8 +599,7 @@ class DataMatrixProtocolHandler(unohelper.Base, XDispatchProvider, XServiceInfo)
         expected_proto = PROTOCOL_NAME.rstrip(":")
         if proto == expected_proto or complete_url.startswith(PROTOCOL_NAME):
             frame = self._get_active_frame()
-            if frame is not None:
-                return DataMatrixDispatch(self.ctx, frame)
+            return DataMatrixDispatch(self.ctx, frame)
         return None
 
     def queryDispatches(self, requests):
@@ -614,3 +624,4 @@ g_ImplementationHelper.addImplementation(
     IMPLEMENTATION_NAME,
     SERVICE_NAMES,
 )
+
