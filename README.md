@@ -22,7 +22,7 @@ A lightweight, self-contained LibreOffice extension (`com.slovjinika.libreoffice
 
 ### Option 1: Via Extension Manager (GUI)
 
-1. Download the latest `slovjinika-datamatrix.oxt` from the [https://github.com/slovjinika/DataMatrixPlugin/releases/] page.
+1. Download the latest `slovjinika-datamatrix.oxt` from the [releases](https://github.com/slovjinika/DataMatrixPlugin/releases/) page.
 2. Open LibreOffice and go to **Tools → Extension Manager...** (`Ctrl+Alt+E`).
 3. Click **Add...**, select `slovjinika-datamatrix.oxt`, and accept the license.
 4. Restart LibreOffice.
