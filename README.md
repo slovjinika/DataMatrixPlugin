@@ -5,6 +5,8 @@
 
 A lightweight, self-contained LibreOffice extension (`com.slovjinika.libreoffice.datamatrix`) that generates and inserts borderless, transparent-background **DataMatrix (ECC200)** barcodes directly into **Writer**, **Calc**, and **Draw**.
 
+🖨️ [A4 sticker sheet generator](https://github.com/slovjinika/QR2A4)
+
 ## Features
 
 * **Self-Contained ECC200 Encoder:** Built-in pure Python Reed-Solomon and ECC200 placement engine—no external CLI tools (`dmtxwrite`) or C-libraries (`libdmtx`) required.
