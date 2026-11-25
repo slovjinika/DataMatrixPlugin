@@ -20,6 +20,8 @@ PROTOCOL_NAME = "vnd.slovjinika.datamatrix:"
 DM_META_PREFIX = "DATAMATRIX_META::"
 DM_LEGACY_PREFIX = "DATAMATRIX::"
 DEFAULT_SIZE_MM = 20.0
+DEFAULT_FG_COLOR = "#000000"
+DEFAULT_BG_COLOR = "#FFFFFF00"
 
 # DataMatrix ECC200 square symbol sizes:
 # (rows, cols, data_codewords, ec_codewords, rs_blocks)
@@ -275,8 +277,62 @@ def _generate_datamatrix_matrix(text: str) -> list[list[int]]:
     return _place_ecc200_matrix(rows, cols, data_cw + ec_cw)
 
 
-def render_datamatrix_png_bytes(text: str) -> bytes:
-    """Render a compact transparent DataMatrix barcode with a 1-module quiet zone."""
+def _hex_to_rgba(color, default_alpha: int = 255) -> tuple[int, int, int, int]:
+    """Convert a HEX color string (#RGB, #RRGGBB, #RRGGBBAA) or RGB/RGBA tuple to RGBA."""
+    if isinstance(color, (tuple, list)):
+        if len(color) == 4:
+            return tuple(max(0, min(255, int(ch))) for ch in color)  # type: ignore[return-value]
+        if len(color) == 3:
+            r, g, b = (max(0, min(255, int(ch))) for ch in color)
+            return (r, g, b, max(0, min(255, int(default_alpha))))
+        raise ValueError(f"Unsupported color tuple length: {len(color)}")
+
+    if not isinstance(color, str):
+        raise TypeError(f"Unsupported color type: {type(color).__name__}")
+
+    hex_str = color.strip().lstrip("#")
+    if len(hex_str) == 3:
+        r = int(hex_str[0] * 2, 16)
+        g = int(hex_str[1] * 2, 16)
+        b = int(hex_str[2] * 2, 16)
+        a = max(0, min(255, int(default_alpha)))
+    elif len(hex_str) == 6:
+        r = int(hex_str[0:2], 16)
+        g = int(hex_str[2:4], 16)
+        b = int(hex_str[4:6], 16)
+        a = max(0, min(255, int(default_alpha)))
+    elif len(hex_str) == 8:
+        r = int(hex_str[0:2], 16)
+        g = int(hex_str[2:4], 16)
+        b = int(hex_str[4:6], 16)
+        a = int(hex_str[6:8], 16)
+    else:
+        raise ValueError(f"Invalid HEX color: {color!r}")
+
+    return (r, g, b, a)
+
+
+def _normalize_color_str(color_value: str, fallback: str) -> str:
+    """Validate a HEX color string and return a normalized uppercase HEX string."""
+    raw = (color_value or "").strip()
+    if not raw:
+        return fallback
+    try:
+        r, g, b, a = _hex_to_rgba(raw, default_alpha=255)
+    except Exception:
+        return fallback
+    hex_digits = raw.lstrip("#")
+    if len(hex_digits) == 8:
+        return f"#{r:02X}{g:02X}{b:02X}{a:02X}"
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
+def render_datamatrix_png_bytes(
+    text: str,
+    fg_color: str | tuple[int, ...] = DEFAULT_FG_COLOR,
+    bg_color: str | tuple[int, ...] = DEFAULT_BG_COLOR,
+) -> bytes:
+    """Render a DataMatrix barcode with HEX/RGBA module (`fg_color`) and background (`bg_color`) colors."""
     from PIL import Image
 
     matrix = _generate_datamatrix_matrix(text)
@@ -286,12 +342,15 @@ def render_datamatrix_png_bytes(text: str) -> bytes:
     total_w = cols + quiet * 2
     total_h = rows + quiet * 2
 
-    base_img = Image.new("RGBA", (total_w, total_h), (255, 255, 255, 0))
+    fg_rgba = _hex_to_rgba(fg_color, default_alpha=255)
+    bg_rgba = _hex_to_rgba(bg_color, default_alpha=255)
+
+    base_img = Image.new("RGBA", (total_w, total_h), bg_rgba)
     pixels = base_img.load()
     for r in range(rows):
         for c in range(cols):
             if matrix[r][c]:
-                pixels[c + quiet, r + quiet] = (0, 0, 0, 255)
+                pixels[c + quiet, r + quiet] = fg_rgba
 
     scale = max(12, 240 // max(1, max(total_w, total_h)))
     img = base_img.resize(
@@ -329,23 +388,48 @@ def _load_graphic_from_png_bytes(ctx, png_bytes: bytes):
 
 
 def _parse_metadata(description: str, fallback_size_mm: float = DEFAULT_SIZE_MM):
-    """Parse stored DataMatrix text from a shape Description."""
+    """Parse stored DataMatrix text and colors from a shape Description."""
     desc = description or ""
     if desc.startswith(DM_META_PREFIX):
         raw = desc[len(DM_META_PREFIX) :]
         try:
             data = json.loads(raw)
-            return {"text": str(data.get("text", "")), "size_mm": fallback_size_mm}
+            return {
+                "text": str(data.get("text", "")),
+                "fg_color": _normalize_color_str(
+                    str(data.get("fg_color", DEFAULT_FG_COLOR)),
+                    DEFAULT_FG_COLOR,
+                ),
+                "bg_color": _normalize_color_str(
+                    str(data.get("bg_color", DEFAULT_BG_COLOR)),
+                    DEFAULT_BG_COLOR,
+                ),
+                "size_mm": fallback_size_mm,
+            }
         except Exception:
             pass
     if desc.startswith(DM_LEGACY_PREFIX):
-        return {"text": desc[len(DM_LEGACY_PREFIX) :], "size_mm": fallback_size_mm}
+        return {
+            "text": desc[len(DM_LEGACY_PREFIX) :],
+            "fg_color": DEFAULT_FG_COLOR,
+            "bg_color": DEFAULT_BG_COLOR,
+            "size_mm": fallback_size_mm,
+        }
     return None
 
 
-def _format_metadata(text: str) -> str:
-    """Serialize DataMatrix text into a JSON-backed description string."""
-    return f"{DM_META_PREFIX}{json.dumps({'text': text}, ensure_ascii=False)}"
+def _format_metadata(
+    text: str,
+    fg_color: str = DEFAULT_FG_COLOR,
+    bg_color: str = DEFAULT_BG_COLOR,
+) -> str:
+    """Serialize DataMatrix text and colors into a JSON-backed description string."""
+    payload = {
+        "text": text,
+        "fg_color": _normalize_color_str(fg_color, DEFAULT_FG_COLOR),
+        "bg_color": _normalize_color_str(bg_color, DEFAULT_BG_COLOR),
+    }
+    return f"{DM_META_PREFIX}{json.dumps(payload, ensure_ascii=False)}"
 
 
 class _DialogActionListener(unohelper.Base, XActionListener):
@@ -357,9 +441,15 @@ class _DialogActionListener(unohelper.Base, XActionListener):
     def actionPerformed(self, event):
         cmd = getattr(event, "ActionCommand", "")
         if cmd == "OK":
-            edit_ctrl = self.dialog.getControl("EditText")
-            if edit_ctrl is not None:
-                self.state["text"] = edit_ctrl.getText()
+            edit_text = self.dialog.getControl("EditText")
+            edit_fg = self.dialog.getControl("EditFgColor")
+            edit_bg = self.dialog.getControl("EditBgColor")
+            if edit_text is not None:
+                self.state["text"] = edit_text.getText()
+            if edit_fg is not None:
+                self.state["fg_color"] = edit_fg.getText().strip()
+            if edit_bg is not None:
+                self.state["bg_color"] = edit_bg.getText().strip()
             self.state["accepted"] = True
             self.dialog.endExecute()
         elif cmd == "CANCEL":
@@ -367,33 +457,71 @@ class _DialogActionListener(unohelper.Base, XActionListener):
             self.dialog.endExecute()
 
 
-def show_datamatrix_dialog(ctx, title: str, initial_text: str):
-    """Display a minimal dialog with only a text field."""
+def show_datamatrix_dialog(
+    ctx,
+    title: str,
+    initial_text: str,
+    initial_fg_color: str = DEFAULT_FG_COLOR,
+    initial_bg_color: str = DEFAULT_BG_COLOR,
+):
+    """Display a dialog with text, module HEX color, and background HEX color fields."""
     smgr = ctx.ServiceManager
     dp = smgr.createInstanceWithContext("com.sun.star.awt.UnoControlDialogModel", ctx)
-    dp.Width = 240
-    dp.Height = 76
+    dp.Width = 250
+    dp.Height = 128
     dp.Title = title
 
     lbl_text = dp.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
     lbl_text.PositionX = 10
     lbl_text.PositionY = 12
-    lbl_text.Width = 40
+    lbl_text.Width = 62
     lbl_text.Height = 14
     lbl_text.Label = "Data:"
     dp.insertByName("LblText", lbl_text)
 
     edit_text = dp.createInstance("com.sun.star.awt.UnoControlEditModel")
-    edit_text.PositionX = 52
+    edit_text.PositionX = 76
     edit_text.PositionY = 10
-    edit_text.Width = 178
+    edit_text.Width = 164
     edit_text.Height = 16
     edit_text.Text = initial_text
     dp.insertByName("EditText", edit_text)
 
+    lbl_fg = dp.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+    lbl_fg.PositionX = 10
+    lbl_fg.PositionY = 36
+    lbl_fg.Width = 62
+    lbl_fg.Height = 14
+    lbl_fg.Label = "Modules HEX:"
+    dp.insertByName("LblFgColor", lbl_fg)
+
+    edit_fg = dp.createInstance("com.sun.star.awt.UnoControlEditModel")
+    edit_fg.PositionX = 76
+    edit_fg.PositionY = 34
+    edit_fg.Width = 164
+    edit_fg.Height = 16
+    edit_fg.Text = initial_fg_color
+    dp.insertByName("EditFgColor", edit_fg)
+
+    lbl_bg = dp.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+    lbl_bg.PositionX = 10
+    lbl_bg.PositionY = 60
+    lbl_bg.Width = 62
+    lbl_bg.Height = 14
+    lbl_bg.Label = "Bg HEX:"
+    dp.insertByName("LblBgColor", lbl_bg)
+
+    edit_bg = dp.createInstance("com.sun.star.awt.UnoControlEditModel")
+    edit_bg.PositionX = 76
+    edit_bg.PositionY = 58
+    edit_bg.Width = 164
+    edit_bg.Height = 16
+    edit_bg.Text = initial_bg_color
+    dp.insertByName("EditBgColor", edit_bg)
+
     ok_btn = dp.createInstance("com.sun.star.awt.UnoControlButtonModel")
-    ok_btn.PositionX = 122
-    ok_btn.PositionY = 44
+    ok_btn.PositionX = 132
+    ok_btn.PositionY = 94
     ok_btn.Width = 50
     ok_btn.Height = 18
     ok_btn.Label = "OK"
@@ -401,8 +529,8 @@ def show_datamatrix_dialog(ctx, title: str, initial_text: str):
     dp.insertByName("BtnOK", ok_btn)
 
     cancel_btn = dp.createInstance("com.sun.star.awt.UnoControlButtonModel")
-    cancel_btn.PositionX = 178
-    cancel_btn.PositionY = 44
+    cancel_btn.PositionX = 188
+    cancel_btn.PositionY = 94
     cancel_btn.Width = 52
     cancel_btn.Height = 18
     cancel_btn.Label = "Cancel"
@@ -411,7 +539,12 @@ def show_datamatrix_dialog(ctx, title: str, initial_text: str):
     dialog = smgr.createInstanceWithContext("com.sun.star.awt.UnoControlDialog", ctx)
     dialog.setModel(dp)
 
-    state = {"accepted": False, "text": initial_text}
+    state = {
+        "accepted": False,
+        "text": initial_text,
+        "fg_color": initial_fg_color,
+        "bg_color": initial_bg_color,
+    }
     listener = _DialogActionListener(dialog, state)
 
     c_ok = dialog.getControl("BtnOK")
@@ -433,7 +566,12 @@ def show_datamatrix_dialog(ctx, title: str, initial_text: str):
 
     if not state["accepted"]:
         return None
-    return state["text"]
+
+    return {
+        "text": state["text"],
+        "fg_color": _normalize_color_str(state["fg_color"], DEFAULT_FG_COLOR),
+        "bg_color": _normalize_color_str(state["bg_color"], DEFAULT_BG_COLOR),
+    }
 
 
 def get_selected_datamatrix_shape(doc):
@@ -480,11 +618,20 @@ def _shape_size_from_mm(size_mm: float) -> Size:
     return Size(width_100mm, width_100mm)
 
 
-def insert_or_update_datamatrix(ctx, doc, text: str, existing_shape=None):
-    """Insert a new plain DataMatrix graphic or update an existing one."""
-    png_bytes = render_datamatrix_png_bytes(text)
+def insert_or_update_datamatrix(
+    ctx,
+    doc,
+    text: str,
+    existing_shape=None,
+    fg_color: str = DEFAULT_FG_COLOR,
+    bg_color: str = DEFAULT_BG_COLOR,
+):
+    """Insert a new DataMatrix graphic or update an existing one with specified colors."""
+    norm_fg = _normalize_color_str(fg_color, DEFAULT_FG_COLOR)
+    norm_bg = _normalize_color_str(bg_color, DEFAULT_BG_COLOR)
+    png_bytes = render_datamatrix_png_bytes(text, fg_color=norm_fg, bg_color=norm_bg)
     graphic = _load_graphic_from_png_bytes(ctx, png_bytes)
-    meta_desc = _format_metadata(text)
+    meta_desc = _format_metadata(text, fg_color=norm_fg, bg_color=norm_bg)
 
     if existing_shape is not None:
         current_mm = DEFAULT_SIZE_MM
@@ -552,20 +699,26 @@ class DataMatrixDispatch(unohelper.Base, XDispatch):
             is_edit = existing_shape is not None
             title = "Edit DataMatrix" if is_edit else "Insert DataMatrix"
             init_text = meta["text"] if meta else ""
+            init_fg = meta["fg_color"] if meta else DEFAULT_FG_COLOR
+            init_bg = meta["bg_color"] if meta else DEFAULT_BG_COLOR
 
-            text = show_datamatrix_dialog(
+            result = show_datamatrix_dialog(
                 self.ctx,
                 title=title,
                 initial_text=init_text,
+                initial_fg_color=init_fg,
+                initial_bg_color=init_bg,
             )
-            if text is None or text == "":
+            if result is None or result["text"] == "":
                 return
 
             insert_or_update_datamatrix(
                 self.ctx,
                 doc,
-                text=text,
+                text=result["text"],
                 existing_shape=existing_shape,
+                fg_color=result["fg_color"],
+                bg_color=result["bg_color"],
             )
         except Exception as exc:
             print(f"[DataMatrix] dispatch error: {exc}", file=sys.stderr)
@@ -624,4 +777,3 @@ g_ImplementationHelper.addImplementation(
     IMPLEMENTATION_NAME,
     SERVICE_NAMES,
 )
-
