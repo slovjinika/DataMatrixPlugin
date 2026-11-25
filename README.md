@@ -1,4 +1,3 @@
-
 ![DataMatrix Generator for LibreOffice](image.png)
 
 # DataMatrix Generator for LibreOffice
