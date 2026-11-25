@@ -66,6 +66,49 @@ unopkg remove com.slovjinika.libreoffice.datamatrix || true
 unopkg add ../slovjinika-datamatrix.oxt
 ```
 
+
+### Installing Pillow for LibreOffice's Bundled Python
+
+On many Linux distributions, `Pillow` is already available in the system Python used by LibreOffice. On **Windows** and **macOS**, LibreOffice ships with its own embedded Python runtime, so `Pillow` must be installed directly into it.
+
+#### Windows (PowerShell)
+1. Completely close LibreOffice (make sure no `soffice.bin` processes are still running).
+2. Open **PowerShell** and run (adjust the path if LibreOffice is installed in a custom location):
+
+```powershell
+& "C:\Program Files\LibreOffice\program\python.exe" -m pip install --upgrade pip Pillow
+
+```
+
+#### macOS (Terminal)
+
+1. Completely quit LibreOffice (`Cmd + Q`).
+2. Open **Terminal** and run:
+
+```bash
+/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install Pillow
+
+```
+
+#### Verify Installation
+
+Restart LibreOffice and confirm that `Pillow` imports cleanly:
+
+```powershell
+# Windows (PowerShell)
+& "C:\Program Files\LibreOffice\program\python.exe" -c "import PIL; print(PIL.__version__)"
+
+```
+
+```bash
+# macOS (Terminal)
+/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -c "import PIL; print(PIL.__version__)"
+
+```
+
+> **Note:** If you hit permission errors on Windows, run PowerShell **as Administrator** or add `--user` to the install command. If `pip` is not yet bootstrapped in LibreOffice's Python environment, run `-m ensurepip` first before `pip install Pillow`.
+
+
 ## License
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
