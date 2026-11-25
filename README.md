@@ -9,10 +9,15 @@ A lightweight, self-contained LibreOffice extension (`com.slovjinika.libreoffice
 ## Features
 
 * **Self-Contained ECC200 Encoder:** Built-in pure Python Reed-Solomon and ECC200 placement engine—no external CLI tools (`dmtxwrite`) or C-libraries (`libdmtx`) required.
-* **Borderless & Transparent:** Renders crisp PNG barcodes with a transparent background (`RGBA`) and a minimal 1-module quiet zone so they blend seamlessly over colored backgrounds or text.
+* **Extended ASCII & Pad Byte Compliance:** Supports extended ASCII characters (`128–255`) and standard ECC200 ASCII pad/pseudo-random codewords (`129` + `253`-modulus pseudo-random fill).
 * **Smart Density Packing:** Automatically uses ECC200 ASCII 2-digit packing to select the smallest possible square symbol (e.g., `10×10` for short numeric strings).
-* **Minimalist Workflow:** Integrates directly into the **Insert** menu (**Insert → Insert/Edit DataMatrix**) and toolbar with a single-field input dialog.
-* **In-Place Editing:** Select an existing DataMatrix barcode in your document and run the command again to edit its encoded text while preserving its current dimensions.
+* **Custom HEX & Alpha Colors:** Customize module foreground and background colors using `#RGB`, `#RRGGBB`, or `#RRGGBBAA` hex codes (including transparent, semi-transparent, or solid fills).
+* **Configurable Quiet Zone:** Adjust the margin around the barcode from `0` to `20` modules (defaulting to `1` module) directly in the dialog.
+* **Crisp Scaling & Aspect Preservation:** Renders sharp nearest-neighbor PNG barcodes (`scale >= 12`) and preserves a selected shape's current square dimensions (`mm`) when editing.
+* **In-Place Editing:** Select an existing DataMatrix barcode in your document and run the command again to edit its encoded text, colors, and quiet zone while keeping its size.
+* **Metadata Persistence & Legacy Support:** Stores encoded data, colors, and quiet zone settings in JSON metadata (`DATAMATRIX_META::`), while remaining compatible with legacy `DATAMATRIX::` shapes.
+* **Cross-Document Support:** Works in Writer text documents (`TextGraphicObject`) as well as Calc spreadsheets and Draw/Impress pages (`GraphicObjectShape`).
+* **Minimalist Workflow & Safe Fallbacks:** Integrates into the menu and toolbar via a single dialog for data, HEX colors, and quiet zone, safely falling back to defaults on invalid HEX or out-of-range quiet zone inputs.
 
 ## Requirements
 
