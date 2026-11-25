@@ -22,6 +22,9 @@ DM_LEGACY_PREFIX = "DATAMATRIX::"
 DEFAULT_SIZE_MM = 20.0
 DEFAULT_FG_COLOR = "#000000"
 DEFAULT_BG_COLOR = "#FFFFFF00"
+DEFAULT_QUIET_ZONE = 1
+MIN_QUIET_ZONE = 0
+MAX_QUIET_ZONE = 20
 
 # DataMatrix ECC200 square symbol sizes:
 # (rows, cols, data_codewords, ec_codewords, rs_blocks)
@@ -327,18 +330,30 @@ def _normalize_color_str(color_value: str, fallback: str) -> str:
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
+def _normalize_quiet_zone(value, fallback: int = DEFAULT_QUIET_ZONE) -> int:
+    """Validate quiet zone size in modules and clamp to [MIN_QUIET_ZONE, MAX_QUIET_ZONE]."""
+    if value is None or isinstance(value, bool):
+        return fallback
+    try:
+        q = int(str(value).strip())
+    except Exception:
+        return fallback
+    return max(MIN_QUIET_ZONE, min(MAX_QUIET_ZONE, q))
+
+
 def render_datamatrix_png_bytes(
     text: str,
     fg_color: str | tuple[int, ...] = DEFAULT_FG_COLOR,
     bg_color: str | tuple[int, ...] = DEFAULT_BG_COLOR,
+    quiet_zone: int = DEFAULT_QUIET_ZONE,
 ) -> bytes:
-    """Render a DataMatrix barcode with HEX/RGBA module (`fg_color`) and background (`bg_color`) colors."""
+    """Render a DataMatrix barcode with HEX/RGBA colors and quiet zone in modules."""
     from PIL import Image
 
     matrix = _generate_datamatrix_matrix(text)
     rows = len(matrix)
     cols = len(matrix[0]) if rows else 1
-    quiet = 1
+    quiet = _normalize_quiet_zone(quiet_zone, DEFAULT_QUIET_ZONE)
     total_w = cols + quiet * 2
     total_h = rows + quiet * 2
 
@@ -388,7 +403,7 @@ def _load_graphic_from_png_bytes(ctx, png_bytes: bytes):
 
 
 def _parse_metadata(description: str, fallback_size_mm: float = DEFAULT_SIZE_MM):
-    """Parse stored DataMatrix text and colors from a shape Description."""
+    """Parse stored DataMatrix text, colors, and quiet zone from a shape Description."""
     desc = description or ""
     if desc.startswith(DM_META_PREFIX):
         raw = desc[len(DM_META_PREFIX) :]
@@ -404,6 +419,10 @@ def _parse_metadata(description: str, fallback_size_mm: float = DEFAULT_SIZE_MM)
                     str(data.get("bg_color", DEFAULT_BG_COLOR)),
                     DEFAULT_BG_COLOR,
                 ),
+                "quiet_zone": _normalize_quiet_zone(
+                    data.get("quiet_zone", DEFAULT_QUIET_ZONE),
+                    DEFAULT_QUIET_ZONE,
+                ),
                 "size_mm": fallback_size_mm,
             }
         except Exception:
@@ -413,6 +432,7 @@ def _parse_metadata(description: str, fallback_size_mm: float = DEFAULT_SIZE_MM)
             "text": desc[len(DM_LEGACY_PREFIX) :],
             "fg_color": DEFAULT_FG_COLOR,
             "bg_color": DEFAULT_BG_COLOR,
+            "quiet_zone": DEFAULT_QUIET_ZONE,
             "size_mm": fallback_size_mm,
         }
     return None
@@ -422,12 +442,14 @@ def _format_metadata(
     text: str,
     fg_color: str = DEFAULT_FG_COLOR,
     bg_color: str = DEFAULT_BG_COLOR,
+    quiet_zone: int = DEFAULT_QUIET_ZONE,
 ) -> str:
-    """Serialize DataMatrix text and colors into a JSON-backed description string."""
+    """Serialize DataMatrix text, colors, and quiet zone into a JSON description string."""
     payload = {
         "text": text,
         "fg_color": _normalize_color_str(fg_color, DEFAULT_FG_COLOR),
         "bg_color": _normalize_color_str(bg_color, DEFAULT_BG_COLOR),
+        "quiet_zone": _normalize_quiet_zone(quiet_zone, DEFAULT_QUIET_ZONE),
     }
     return f"{DM_META_PREFIX}{json.dumps(payload, ensure_ascii=False)}"
 
@@ -444,12 +466,15 @@ class _DialogActionListener(unohelper.Base, XActionListener):
             edit_text = self.dialog.getControl("EditText")
             edit_fg = self.dialog.getControl("EditFgColor")
             edit_bg = self.dialog.getControl("EditBgColor")
+            edit_quiet = self.dialog.getControl("EditQuietZone")
             if edit_text is not None:
                 self.state["text"] = edit_text.getText()
             if edit_fg is not None:
                 self.state["fg_color"] = edit_fg.getText().strip()
             if edit_bg is not None:
                 self.state["bg_color"] = edit_bg.getText().strip()
+            if edit_quiet is not None:
+                self.state["quiet_zone"] = edit_quiet.getText().strip()
             self.state["accepted"] = True
             self.dialog.endExecute()
         elif cmd == "CANCEL":
@@ -463,24 +488,25 @@ def show_datamatrix_dialog(
     initial_text: str,
     initial_fg_color: str = DEFAULT_FG_COLOR,
     initial_bg_color: str = DEFAULT_BG_COLOR,
+    initial_quiet_zone: int = DEFAULT_QUIET_ZONE,
 ):
-    """Display a dialog with text, module HEX color, and background HEX color fields."""
+    """Display a dialog with text, module HEX color, bg HEX color, and quiet zone fields."""
     smgr = ctx.ServiceManager
     dp = smgr.createInstanceWithContext("com.sun.star.awt.UnoControlDialogModel", ctx)
-    dp.Width = 250
-    dp.Height = 128
+    dp.Width = 256
+    dp.Height = 152
     dp.Title = title
 
     lbl_text = dp.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
     lbl_text.PositionX = 10
     lbl_text.PositionY = 12
-    lbl_text.Width = 62
+    lbl_text.Width = 68
     lbl_text.Height = 14
     lbl_text.Label = "Data:"
     dp.insertByName("LblText", lbl_text)
 
     edit_text = dp.createInstance("com.sun.star.awt.UnoControlEditModel")
-    edit_text.PositionX = 76
+    edit_text.PositionX = 82
     edit_text.PositionY = 10
     edit_text.Width = 164
     edit_text.Height = 16
@@ -490,13 +516,13 @@ def show_datamatrix_dialog(
     lbl_fg = dp.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
     lbl_fg.PositionX = 10
     lbl_fg.PositionY = 36
-    lbl_fg.Width = 62
+    lbl_fg.Width = 68
     lbl_fg.Height = 14
     lbl_fg.Label = "Modules HEX:"
     dp.insertByName("LblFgColor", lbl_fg)
 
     edit_fg = dp.createInstance("com.sun.star.awt.UnoControlEditModel")
-    edit_fg.PositionX = 76
+    edit_fg.PositionX = 82
     edit_fg.PositionY = 34
     edit_fg.Width = 164
     edit_fg.Height = 16
@@ -506,22 +532,38 @@ def show_datamatrix_dialog(
     lbl_bg = dp.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
     lbl_bg.PositionX = 10
     lbl_bg.PositionY = 60
-    lbl_bg.Width = 62
+    lbl_bg.Width = 68
     lbl_bg.Height = 14
     lbl_bg.Label = "Bg HEX:"
     dp.insertByName("LblBgColor", lbl_bg)
 
     edit_bg = dp.createInstance("com.sun.star.awt.UnoControlEditModel")
-    edit_bg.PositionX = 76
+    edit_bg.PositionX = 82
     edit_bg.PositionY = 58
     edit_bg.Width = 164
     edit_bg.Height = 16
     edit_bg.Text = initial_bg_color
     dp.insertByName("EditBgColor", edit_bg)
 
+    lbl_quiet = dp.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+    lbl_quiet.PositionX = 10
+    lbl_quiet.PositionY = 84
+    lbl_quiet.Width = 68
+    lbl_quiet.Height = 14
+    lbl_quiet.Label = "Quiet (mod):"
+    dp.insertByName("LblQuietZone", lbl_quiet)
+
+    edit_quiet = dp.createInstance("com.sun.star.awt.UnoControlEditModel")
+    edit_quiet.PositionX = 82
+    edit_quiet.PositionY = 82
+    edit_quiet.Width = 60
+    edit_quiet.Height = 16
+    edit_quiet.Text = str(_normalize_quiet_zone(initial_quiet_zone, DEFAULT_QUIET_ZONE))
+    dp.insertByName("EditQuietZone", edit_quiet)
+
     ok_btn = dp.createInstance("com.sun.star.awt.UnoControlButtonModel")
-    ok_btn.PositionX = 132
-    ok_btn.PositionY = 94
+    ok_btn.PositionX = 138
+    ok_btn.PositionY = 118
     ok_btn.Width = 50
     ok_btn.Height = 18
     ok_btn.Label = "OK"
@@ -529,8 +571,8 @@ def show_datamatrix_dialog(
     dp.insertByName("BtnOK", ok_btn)
 
     cancel_btn = dp.createInstance("com.sun.star.awt.UnoControlButtonModel")
-    cancel_btn.PositionX = 188
-    cancel_btn.PositionY = 94
+    cancel_btn.PositionX = 194
+    cancel_btn.PositionY = 118
     cancel_btn.Width = 52
     cancel_btn.Height = 18
     cancel_btn.Label = "Cancel"
@@ -544,6 +586,7 @@ def show_datamatrix_dialog(
         "text": initial_text,
         "fg_color": initial_fg_color,
         "bg_color": initial_bg_color,
+        "quiet_zone": str(_normalize_quiet_zone(initial_quiet_zone, DEFAULT_QUIET_ZONE)),
     }
     listener = _DialogActionListener(dialog, state)
 
@@ -571,6 +614,7 @@ def show_datamatrix_dialog(
         "text": state["text"],
         "fg_color": _normalize_color_str(state["fg_color"], DEFAULT_FG_COLOR),
         "bg_color": _normalize_color_str(state["bg_color"], DEFAULT_BG_COLOR),
+        "quiet_zone": _normalize_quiet_zone(state["quiet_zone"], DEFAULT_QUIET_ZONE),
     }
 
 
@@ -625,13 +669,25 @@ def insert_or_update_datamatrix(
     existing_shape=None,
     fg_color: str = DEFAULT_FG_COLOR,
     bg_color: str = DEFAULT_BG_COLOR,
+    quiet_zone: int = DEFAULT_QUIET_ZONE,
 ):
-    """Insert a new DataMatrix graphic or update an existing one with specified colors."""
+    """Insert a new DataMatrix graphic or update an existing one with colors and quiet zone."""
     norm_fg = _normalize_color_str(fg_color, DEFAULT_FG_COLOR)
     norm_bg = _normalize_color_str(bg_color, DEFAULT_BG_COLOR)
-    png_bytes = render_datamatrix_png_bytes(text, fg_color=norm_fg, bg_color=norm_bg)
+    norm_quiet = _normalize_quiet_zone(quiet_zone, DEFAULT_QUIET_ZONE)
+    png_bytes = render_datamatrix_png_bytes(
+        text,
+        fg_color=norm_fg,
+        bg_color=norm_bg,
+        quiet_zone=norm_quiet,
+    )
     graphic = _load_graphic_from_png_bytes(ctx, png_bytes)
-    meta_desc = _format_metadata(text, fg_color=norm_fg, bg_color=norm_bg)
+    meta_desc = _format_metadata(
+        text,
+        fg_color=norm_fg,
+        bg_color=norm_bg,
+        quiet_zone=norm_quiet,
+    )
 
     if existing_shape is not None:
         current_mm = DEFAULT_SIZE_MM
@@ -701,6 +757,7 @@ class DataMatrixDispatch(unohelper.Base, XDispatch):
             init_text = meta["text"] if meta else ""
             init_fg = meta["fg_color"] if meta else DEFAULT_FG_COLOR
             init_bg = meta["bg_color"] if meta else DEFAULT_BG_COLOR
+            init_quiet = meta["quiet_zone"] if meta else DEFAULT_QUIET_ZONE
 
             result = show_datamatrix_dialog(
                 self.ctx,
@@ -708,6 +765,7 @@ class DataMatrixDispatch(unohelper.Base, XDispatch):
                 initial_text=init_text,
                 initial_fg_color=init_fg,
                 initial_bg_color=init_bg,
+                initial_quiet_zone=init_quiet,
             )
             if result is None or result["text"] == "":
                 return
@@ -719,6 +777,7 @@ class DataMatrixDispatch(unohelper.Base, XDispatch):
                 existing_shape=existing_shape,
                 fg_color=result["fg_color"],
                 bg_color=result["bg_color"],
+                quiet_zone=result["quiet_zone"],
             )
         except Exception as exc:
             print(f"[DataMatrix] dispatch error: {exc}", file=sys.stderr)
